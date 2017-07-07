@@ -42,7 +42,7 @@ import java.util.ArrayList
 /**
  * @author Romeo Kienzler (based on the MNISTAnomalyExample of Alex Black)
  */
-class IoTAnomalyExampleLSTMFFTWatsonIoT(windowSize: Integer) {
+class IoTAnomalyExampleLSTMFFTWatsonIoT(runOnSpark: Boolean, windowSize: Integer) {
   // Random number generator seed, for reproducability
   val seed = 12345
   // Network learning rate
@@ -78,32 +78,42 @@ class IoTAnomalyExampleLSTMFFTWatsonIoT(windowSize: Integer) {
       .activation(Activation.IDENTITY).nIn(10).nOut(windowSize).build())
     .pretrain(false).backprop(true).build();
 
-  //val net = new MultiLayerNetwork(conf)
+  val runLocal = !runOnSpark
+  var net: MultiLayerNetwork = _
+  var sparkNet: SparkDl4jMultiLayer = _
+  var sc: JavaSparkContext = _;
+  if (runLocal) {
+    net = new MultiLayerNetwork(conf)
+    net.setListeners(Collections.singletonList(new ScoreIterationListener(1).asInstanceOf[IterationListener]))
+  } else {
+    val tm = new ParameterAveragingTrainingMaster.Builder(20)
+      .averagingFrequency(5)
+      .workerPrefetchNumBatches(2)
+      .batchSizePerWorker(16)
+      .build();
 
-  val tm = new ParameterAveragingTrainingMaster.Builder(20)
-    .averagingFrequency(5)
-    .workerPrefetchNumBatches(2)
-    .batchSizePerWorker(16)
-    .build();
+    val sparkConf = new SparkConf()
 
-  val sparkConf = new SparkConf()
-  
-
-  sparkConf.setAppName("DL4J Spark Example");
-  val sc = new JavaSparkContext(sparkConf);
-  val net = new SparkDl4jMultiLayer(sc, conf, tm);
-
-  net.setListeners(Collections.singletonList(new ScoreIterationListener(1).asInstanceOf[IterationListener]))
-
+    sparkConf.setAppName("DL4J Spark Example");
+    sc = new JavaSparkContext(sparkConf);
+    sparkNet = new SparkDl4jMultiLayer(sc, conf, tm);
+  }
 
   def detect(xyz: INDArray): Double = {
-    val ds = new DataSet(xyz,xyz)
-    val trainDataList = new ArrayList[DataSet]();
-    trainDataList.add(ds)
-    val data = sc.parallelize(trainDataList);
-    for (a <- 1 to 1000) {
-      net.fit(data)
+    if (runLocal) {
+      for (a <- 1 to 1000) {
+        net.fit(xyz, xyz)
+      }
+      return net.score(new DataSet(xyz,xyz));
+    } else {
+      val ds = new DataSet(xyz, xyz)
+      val trainDataList = new ArrayList[DataSet]();
+      trainDataList.add(ds)
+      val data = sc.parallelize(trainDataList);
+      for (a <- 1 to 1000) {
+        sparkNet.fit(data)
+      }
+      return sparkNet.evaluateRegression(data).meanSquaredError(0)
     }
-    return 0;
   }
 }

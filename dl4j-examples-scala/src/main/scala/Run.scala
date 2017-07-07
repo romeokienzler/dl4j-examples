@@ -15,7 +15,8 @@ import edu.emory.mathcs.jtransforms.fft.DoubleFFT_1D;
 object Run {
   val windowSize = 3000
   def main(args: Array[String]): Unit = {
-    val lstm: IoTAnomalyExampleLSTMFFTWatsonIoT = new IoTAnomalyExampleLSTMFFTWatsonIoT(windowSize * 6)
+    val runOnSpark = if (args.length>0) args(0).toBoolean else false
+    val lstm: IoTAnomalyExampleLSTMFFTWatsonIoT = new IoTAnomalyExampleLSTMFFTWatsonIoT(runOnSpark,windowSize * 6)
     object MyEventCallback extends EventCallback {
 
       var fifo: Queue[Array[Double]] = new CircularFifoQueue[Array[Double]](windowSize)
@@ -46,7 +47,7 @@ object Run {
 
           println(lstm.detect(fftXYZ));
           fifo = new CircularFifoQueue[Array[Double]](windowSize);
-          index = index - 1;
+          index = -1;
         }
         index = index + 1;
       }
