@@ -29,8 +29,15 @@ import org.nd4j.linalg.dataset.DataSet;
 import org.nd4j.linalg.dataset.api.iterator.DataSetIterator;
 import org.nd4j.linalg.factory.Nd4j;
 import org.nd4j.linalg.lossfunctions.LossFunctions;
+import org.deeplearning4j.spark.impl.paramavg.ParameterAveragingTrainingMaster
 
 import edu.emory.mathcs.jtransforms.fft.DoubleFFT_1D;
+import org.deeplearning4j.spark.impl.multilayer.SparkDl4jMultiLayer
+import org.apache.spark.SparkContext
+import org.apache.spark.SparkConf
+import org.apache.spark.api.java.JavaSparkContext
+import java.util.Arrays.ArrayList
+import java.util.ArrayList
 
 /**
  * @author Romeo Kienzler (based on the MNISTAnomalyExample of Alex Black)
@@ -71,22 +78,32 @@ class IoTAnomalyExampleLSTMFFTWatsonIoT(windowSize: Integer) {
       .activation(Activation.IDENTITY).nIn(10).nOut(windowSize).build())
     .pretrain(false).backprop(true).build();
 
-  val net = new MultiLayerNetwork(conf)
+  //val net = new MultiLayerNetwork(conf)
 
-//  val tm = new ParameterAveragingTrainingMaster.Builder(batchSizePerWorker)
-//    .averagingFrequency(5)
-//    .workerPrefetchNumBatches(2)
-//    .batchSizePerWorker(16)
-//    .build();
-//
-//  val sparkNet = new SparkDl4jMultiLayer(new SparkContext(), conf, tm);
+  val tm = new ParameterAveragingTrainingMaster.Builder(20)
+    .averagingFrequency(5)
+    .workerPrefetchNumBatches(2)
+    .batchSizePerWorker(16)
+    .build();
+
+  val sparkConf = new SparkConf()
+  
+
+  sparkConf.setAppName("DL4J Spark Example");
+  val sc = new JavaSparkContext(sparkConf);
+  val net = new SparkDl4jMultiLayer(sc, conf, tm);
 
   net.setListeners(Collections.singletonList(new ScoreIterationListener(1).asInstanceOf[IterationListener]))
 
+
   def detect(xyz: INDArray): Double = {
+    val ds = new DataSet(xyz,xyz)
+    val trainDataList = new ArrayList[DataSet]();
+    trainDataList.add(ds)
+    val data = sc.parallelize(trainDataList);
     for (a <- 1 to 1000) {
-      net.fit(xyz, xyz)
+      net.fit(data)
     }
-    return net.score(new DataSet(xyz, xyz))
+    return 0;
   }
 }
